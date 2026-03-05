@@ -34,16 +34,18 @@ export default function Auth({ onAuth }) {
   const [error, setError]     = useState("");
   const [info, setInfo]       = useState("");
 
-  // Check if already logged in
+  // Check if already logged in or returning from OAuth redirect
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) onAuth(data.session);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) onAuth(session);
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
+        onAuth(session);
+      }
     });
     return () => listener.subscription.unsubscribe();
-  }, [onAuth]);
+  }, []);
 
   const handleEmail = async () => {
     setLoading(true); setError(""); setInfo("");
