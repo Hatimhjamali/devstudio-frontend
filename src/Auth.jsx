@@ -1,9 +1,4 @@
 import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON    = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase         = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 const C = {
   bg:"#070a0f", bg2:"#0b0f18", bg3:"#0f1520",
@@ -25,7 +20,7 @@ function GlowOrb({ x, y, color, size = 300 }) {
   );
 }
 
-export default function Auth({ onAuth }) {
+export default function Auth({ onAuth, supabase }) {
   const [mode, setMode]       = useState("login"); // "login" | "signup" | "verify"
   const [email, setEmail]     = useState("");
   const [password, setPass]   = useState("");
@@ -34,18 +29,8 @@ export default function Auth({ onAuth }) {
   const [error, setError]     = useState("");
   const [info, setInfo]       = useState("");
 
-  // Check if already logged in or returning from OAuth redirect
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) onAuth(data.session);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
-        onAuth(session);
-      }
-    });
-    return () => listener.subscription.unsubscribe();
-  }, []);
+  // OAuth redirects are handled by main.jsx
+  // This component only handles the UI
 
   const handleEmail = async () => {
     setLoading(true); setError(""); setInfo("");
