@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import AgentLibrary, { ALL_AGENTS } from "./AgentLibrary.jsx";
+import Legal from "./Legal.jsx";
 
 // ── CONFIG ────────────────────────────────────────────────────
 const API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL)
@@ -24,13 +26,8 @@ const C = {
   yellow:"#ffd700", red:"#ff3355",
 };
 
-const AGENTS = [
-  { id:"coord",    name:"Coordinator", emoji:"🎯", color:C.green,  role:"Plans & organizes" },
-  { id:"designer", name:"Designer",    emoji:"🎨", color:C.cyan,   role:"Game design & systems" },
-  { id:"prog",     name:"Programmer",  emoji:"💻", color:C.orange, role:"Code & implementation" },
-  { id:"analyst",  name:"Analyst",     emoji:"📊", color:C.purple, role:"Data & balance" },
-  { id:"market",   name:"Marketing",   emoji:"📣", color:C.pink,   role:"Community & growth" },
-];
+// Use ALL_AGENTS from AgentLibrary — full 25 agent list
+const AGENTS = ALL_AGENTS;
 
 const INIT_STUDIOS  = [{ id:"s1", name:"The Studio", agents:["coord","designer","prog","analyst","market"] }];
 const INIT_OFFICES  = [
@@ -173,8 +170,8 @@ function ChatInput({onSend,agents,briefMode,setBriefMode,disabled}) {
         <div style={{flex:1,background:C.bg3,border:`1px solid ${briefMode?C.yellow+"55":disabled?C.border:C.border2}`,borderRadius:12,padding:"10px 14px",transition:"border-color .2s",opacity:disabled?.6:1}}>
           <textarea ref={taRef} value={val} onChange={e=>setVal(e.target.value)}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
-            placeholder={disabled?"Agents are responding...":"Message your team... @agent, /brief start, /ref"}
-            disabled={disabled} rows={1}
+            placeholder="Message your team... @agent, /brief start, /ref"
+            rows={1}
             style={{width:"100%",background:"none",border:"none",outline:"none",color:C.textB,fontSize:13,resize:"none",fontFamily:"'Exo 2',sans-serif",lineHeight:1.55,maxHeight:120}}
           />
         </div>
@@ -226,10 +223,15 @@ function BriefSaveModal({text,agents,onSave,onClose}) {
   );
 }
 
-function NewRoomModal({type,onClose,onConfirm}) {
+function NewRoomModal({type,onClose,onConfirm,usedAgents=[]}) {
   const [name,setName]=useState("");
   const [selected,setSelected]=useState([]);
-  const toggle=id=>type==="office"?setSelected([id]):setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const isUsed=id=>usedAgents.includes(id);
+  const toggle=id=>{
+    if(isUsed(id)) return; // agent already in project
+    if(type==="office") setSelected([id]);
+    else setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  };
   const valid=name.trim()&&selected.length>=(type==="office"?1:2);
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:600}}>
@@ -238,13 +240,18 @@ function NewRoomModal({type,onClose,onConfirm}) {
         <div style={{fontSize:12,color:C.textD,marginBottom:14}}>{type==="studio"?"Select 2+ agents — becomes a Studio":"Select 1 agent — becomes an Office"}</div>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Name..." autoFocus style={{...S.input,marginBottom:12}} onKeyDown={e=>{if(e.key==="Enter"&&valid)onConfirm({name:name.trim(),agents:selected});}}/>
         <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
-          {AGENTS.map(a=>(
-            <div key={a.id} onClick={()=>toggle(a.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,cursor:"pointer",background:selected.includes(a.id)?`${a.color}15`:C.bg3,border:`1px solid ${selected.includes(a.id)?a.color+"44":C.border}`}}>
-              <span style={{fontSize:18}}>{a.emoji}</span>
-              <div><div style={{fontSize:12,color:selected.includes(a.id)?a.color:C.textB,fontWeight:600}}>{a.name}</div><div style={{fontSize:10,color:C.textD}}>{a.role}</div></div>
-              {selected.includes(a.id)&&<div style={{marginLeft:"auto",color:a.color,fontWeight:700}}>✓</div>}
-            </div>
-          ))}
+          {AGENTS.map(a=>{
+            const used=isUsed(a.id);
+            const sel=selected.includes(a.id);
+            return (
+              <div key={a.id} onClick={()=>toggle(a.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,cursor:used?"not-allowed":"pointer",opacity:used?.4:1,background:sel?`${a.color}15`:C.bg3,border:`1px solid ${sel?a.color+"44":C.border}`}}>
+                <span style={{fontSize:18}}>{a.emoji}</span>
+                <div><div style={{fontSize:12,color:sel?a.color:C.textB,fontWeight:600}}>{a.name}</div><div style={{fontSize:10,color:C.textD}}>{used?"Already in project":a.role}</div></div>
+                {sel&&<div style={{marginLeft:"auto",color:a.color,fontWeight:700}}>✓</div>}
+                {used&&<div style={{marginLeft:"auto",color:C.textD,fontSize:10}}>taken</div>}
+              </div>
+            );
+          })}
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={onClose} style={{...S.btnGhost,flex:1}}>Cancel</button>
@@ -283,7 +290,7 @@ function BriefsPage({briefs,onDelete,onRef}) {
 }
 
 // ── SIDEBAR ───────────────────────────────────────────────────
-function Sidebar({activeRoom,setActiveRoom,projects,activeProject,setActiveProject,studios,offices,briefs,onNewStudio,onNewOffice,view,setView}) {
+function Sidebar({activeRoom,setActiveRoom,projects,activeProject,setActiveProject,studios,offices,briefs,onNewStudio,onNewOffice,view,setView,onShowLibrary,onShowLegal}) {
   const [collapsed,setCollapsed]=useState(false);
   const proj=projects.find(p=>p.id===activeProject);
   return (
@@ -318,9 +325,16 @@ function Sidebar({activeRoom,setActiveRoom,projects,activeProject,setActiveProje
           <span>📌</span>
           <div><div style={{fontSize:12,color:view==="briefs"?C.yellow:C.text,fontWeight:view==="briefs"?600:400}}>Briefs</div><div style={{fontSize:10,color:C.textD}}>{briefs.length} saved</div></div>
         </div>
+        {/* Agent Library button */}
+        <div onClick={onShowLibrary} style={{margin:"0 12px 6px",padding:"8px 10px",borderRadius:8,cursor:"pointer",background:"transparent",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:8,transition:"border-color .2s"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.cyan+"44"} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+          <span>🤖</span>
+          <div style={{fontSize:12,color:C.text,fontWeight:500}}>Agent Library</div>
+          <div style={{marginLeft:"auto",fontSize:10,color:C.textD,fontFamily:"'Share Tech Mono',monospace"}}>25</div>
+        </div>
         <div style={{borderTop:`1px solid ${C.border}`,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
           <div style={{width:28,height:28,borderRadius:"50%",background:`linear-gradient(135deg,${C.cyan}44,${C.purple}44)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:C.textB}}>H</div>
-          <div><div style={{fontSize:12,color:C.textB,fontWeight:600}}>Hatim</div><div style={{fontSize:10,color:C.green,fontFamily:"'Share Tech Mono',monospace"}}>● online</div></div>
+          <div style={{flex:1}}><div style={{fontSize:12,color:C.textB,fontWeight:600}}>Hatim</div><div style={{fontSize:10,color:C.green,fontFamily:"'Share Tech Mono',monospace"}}>● online</div></div>
+          <button onClick={e=>{e.stopPropagation();onShowLegal();}} style={{background:"none",border:"none",color:C.textD,cursor:"pointer",fontSize:10,padding:2}} title="Terms & Privacy">⚖️</button>
         </div>
       </>}
     </div>
@@ -375,6 +389,21 @@ function RightPanel({agents,typing,briefs,onRefBrief}) {
 // ── MAIN APP ──────────────────────────────────────────────────
 export default function App({ session }) {
   const {toasts,toast} = useToast();
+
+  const submitFeedback = async () => {
+    if (!feedbackText.trim() || !session) return;
+    try {
+      await fetch(`${API_URL}/api/feedback`, {
+        method: "POST",
+        headers: { ...authHeaders(session), "Content-Type": "application/json" },
+        body: JSON.stringify({ text: feedbackText.trim() }),
+      });
+      setFeedbackSent(true);
+      setFeedbackText("");
+      setTimeout(() => { setShowFeedback(false); setFeedbackSent(false); }, 2000);
+      toast("💬 Feedback sent — thank you!");
+    } catch { toast("Failed to send feedback"); }
+  };
   const [view,setView]               = useState("chat");
   const [activeProject,setActiveProject] = useState("p1");
   const [projects]                   = useState(INIT_PROJECTS);
@@ -387,12 +416,41 @@ export default function App({ session }) {
   const [briefBuffer,setBriefBuffer] = useState([]);
   const [briefs,setBriefs]           = useState([]);
   const [modal,setModal]             = useState(null);
+  const [showLibrary,setShowLibrary] = useState(false);
+  const [showLegal,setShowLegal]     = useState(false);
+  const [showFeedback,setShowFeedback] = useState(false);
+  const [feedbackText,setFeedbackText] = useState("");
+  const [feedbackSent,setFeedbackSent] = useState(false);
   const [ctxMenu,setCtxMenu]         = useState(null);
   const [briefSaveModal,setBriefSaveModal] = useState(null);
   const [sending,setSending]         = useState(false);
   const feedRef = useRef();
 
   const curMsgs = messages[activeRoom?.id] || [];
+
+  // Load messages from DB when room changes
+  useEffect(()=>{
+    if (!activeRoom || !session) return;
+    const roomId = activeRoom.id;
+    // Only fetch if we don't already have messages for this room
+    if (messages[roomId]) return;
+    fetch(`${API_URL}/api/rooms/${roomId}/messages`, {
+      headers: authHeaders(session),
+    })
+    .then(r=>r.json())
+    .then(msgs=>{
+      if (Array.isArray(msgs) && msgs.length > 0) {
+        const formatted = msgs.map(m=>({
+          id:   m.id,
+          from: m.from_user ? "user" : m.from_agent,
+          text: m.text,
+          ts:   m.ts,
+        }));
+        setMessages(prev=>({...prev,[roomId]:formatted}));
+      }
+    })
+    .catch(()=>{});
+  },[activeRoom?.id]);
 
   useEffect(()=>{
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
@@ -563,7 +621,7 @@ export default function App({ session }) {
         @keyframes slideInRight{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
       `}</style>
 
-      <Sidebar activeRoom={activeRoom} setActiveRoom={setActiveRoom} projects={projects} activeProject={activeProject} setActiveProject={setActiveProject} studios={studios} offices={offices} briefs={briefs} onNewStudio={()=>setModal("studio")} onNewOffice={()=>setModal("office")} view={view} setView={setView}/>
+      <Sidebar activeRoom={activeRoom} setActiveRoom={setActiveRoom} projects={projects} activeProject={activeProject} setActiveProject={setActiveProject} studios={studios} offices={offices} briefs={briefs} onNewStudio={()=>setModal("studio")} onNewOffice={()=>setModal("office")} view={view} setView={setView} onShowLibrary={()=>setShowLibrary(true)} onShowLegal={()=>setShowLegal(true)}/>
 
       <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
         {view==="briefs" ? (
@@ -606,13 +664,54 @@ export default function App({ session }) {
 
       {view==="chat"&&activeRoom&&<RightPanel agents={activeRoom.agents} typing={typing} briefs={briefs} onRefBrief={refBrief}/>}
 
-      {modal&&<NewRoomModal type={modal} onClose={()=>setModal(null)} onConfirm={createRoom}/>}
+      {modal&&<NewRoomModal type={modal} onClose={()=>setModal(null)} onConfirm={createRoom} usedAgents={[...studios,...offices].flatMap(r=>r.agents||[])}/>}
       {briefSaveModal&&<BriefSaveModal text={briefSaveModal.text} agents={briefSaveModal.agents} onSave={saveBrief} onClose={()=>setBriefSaveModal(null)}/>}
       {ctxMenu&&<ContextMenu x={ctxMenu.x} y={ctxMenu.y} text={ctxMenu.text} briefs={briefs}
         onSaveNew={()=>{setBriefSaveModal({text:ctxMenu.text,agents:activeRoom?.agents||[]});setCtxMenu(null);}}
         onAddExisting={id=>{setBriefs(bs=>bs.map(b=>b.id===id?{...b,preview:b.preview+" [+excerpt]"}:b));toast("Added to brief");setCtxMenu(null);}}
         onClose={()=>setCtxMenu(null)}
       />}
+      {showLibrary&&<AgentLibrary
+        onClose={()=>setShowLibrary(false)}
+        usedAgents={[...studios,...offices].flatMap(r=>r.agents||[])}
+        onAddAgent={agent=>{
+          setOffices(prev=>[...prev,{id:`o_${agent.id}`,name:agent.name,agents:[agent.id]}]);
+          toast(`${agent.emoji} ${agent.name} added as Office`);
+        }}
+      />}
+      {showLegal&&<Legal onClose={()=>setShowLegal(false)}/>}
+
+      {/* Floating feedback button */}
+      <div style={{position:"fixed",bottom:24,right:24,zIndex:500,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:10}}>
+        {showFeedback&&(
+          <div style={{background:C.bg2,border:`1px solid ${C.border2}`,borderRadius:14,padding:18,width:300,boxShadow:"0 20px 60px rgba(0,0,0,.7)"}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.textB,marginBottom:4}}>Share Feedback</div>
+            <div style={{fontSize:11,color:C.textD,marginBottom:12}}>What's working? What's broken? Be honest.</div>
+            {feedbackSent
+              ? <div style={{textAlign:"center",padding:"20px 0",fontSize:13,color:C.green}}>✓ Sent. Thank you!</div>
+              : <>
+                  <textarea
+                    value={feedbackText}
+                    onChange={e=>setFeedbackText(e.target.value)}
+                    placeholder="Type your feedback..."
+                    rows={4}
+                    style={{width:"100%",background:C.bg3,border:`1px solid ${C.border2}`,borderRadius:8,padding:"8px 10px",color:C.textB,fontSize:12,resize:"none",outline:"none",fontFamily:"'Exo 2',sans-serif",boxSizing:"border-box",marginBottom:10}}
+                  />
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>{setShowFeedback(false);setFeedbackText("");}} style={{flex:1,padding:"7px 0",borderRadius:7,border:`1px solid ${C.border2}`,background:"none",color:C.textD,cursor:"pointer",fontSize:12,fontFamily:"'Exo 2',sans-serif"}}>Cancel</button>
+                    <button onClick={submitFeedback} disabled={!feedbackText.trim()} style={{flex:1,padding:"7px 0",borderRadius:7,border:"none",background:feedbackText.trim()?C.cyan:"#1a2535",color:feedbackText.trim()?"#000":C.textD,cursor:feedbackText.trim()?"pointer":"not-allowed",fontSize:12,fontWeight:700,fontFamily:"'Exo 2',sans-serif"}}>Send</button>
+                  </div>
+                </>
+            }
+          </div>
+        )}
+        <button
+          onClick={()=>setShowFeedback(f=>!f)}
+          title="Share feedback"
+          style={{width:44,height:44,borderRadius:"50%",border:`1px solid ${C.border2}`,background:showFeedback?C.cyan:C.bg2,color:showFeedback?"#000":C.textD,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(0,0,0,.5)",transition:"all .2s"}}
+        >💬</button>
+      </div>
+
       <ToastContainer toasts={toasts}/>
     </div>
   );
